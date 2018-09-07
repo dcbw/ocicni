@@ -3,6 +3,7 @@ package ocicni
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path"
 	"sort"
@@ -492,7 +493,8 @@ func (plugin *cniNetworkPlugin) GetPodNetworkStatus(podNetwork PodNetwork) ([]cn
 }
 
 func (network *cniNetwork) addToNetwork(cacheDir string, podNetwork *PodNetwork, ifName string) (cnitypes.Result, error) {
-	rt, err := buildCNIRuntimeConf(cacheDir, podNetwork, ifName)
+	ip := "192.168.1.5"
+	rt, err := buildCNIRuntimeConf(cacheDir, podNetwork, ifName, ip)
 	if err != nil {
 		logrus.Errorf("Error adding network: %v", err)
 		return nil, err
@@ -510,7 +512,7 @@ func (network *cniNetwork) addToNetwork(cacheDir string, podNetwork *PodNetwork,
 }
 
 func (network *cniNetwork) deleteFromNetwork(cacheDir string, podNetwork *PodNetwork, ifName string) error {
-	rt, err := buildCNIRuntimeConf(cacheDir, podNetwork, ifName)
+	rt, err := buildCNIRuntimeConf(cacheDir, podNetwork, ifName, "")
 	if err != nil {
 		logrus.Errorf("Error deleting network: %v", err)
 		return err
@@ -526,7 +528,7 @@ func (network *cniNetwork) deleteFromNetwork(cacheDir string, podNetwork *PodNet
 	return nil
 }
 
-func buildCNIRuntimeConf(cacheDir string, podNetwork *PodNetwork, ifName string) (*libcni.RuntimeConf, error) {
+func buildCNIRuntimeConf(cacheDir string, podNetwork *PodNetwork, ifName, ip string) (*libcni.RuntimeConf, error) {
 	logrus.Infof("Got pod network %+v", podNetwork)
 
 	rt := &libcni.RuntimeConf{
@@ -540,6 +542,14 @@ func buildCNIRuntimeConf(cacheDir string, podNetwork *PodNetwork, ifName string)
 			{"K8S_POD_NAME", podNetwork.Name},
 			{"K8S_POD_INFRA_CONTAINER_ID", podNetwork.ID},
 		},
+	}
+
+	// Add requested static IP address to CNI_ARGS
+	if ip != "" {
+		if tmp := net.ParseIP(ip); tmp == nil {
+			return nil, fmt.Errorf("invalid IP address %q", ip)
+		}
+		rt.Args = append(rt.Args, [2]string{"IP", ip})
 	}
 
 	if len(podNetwork.PortMappings) == 0 {
